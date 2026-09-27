@@ -11,6 +11,9 @@ namespace VenusParticleEngine.Core
 
         public unsafe ParticleBuffer(int size)
         {
+            if (size <= 0)
+                throw new ArgumentOutOfRangeException(nameof(size), "size must be greater than zero");
+
             Size = size;
             // add one extra spot in memory for margin between head and tail
             // so the iterator can see that it's at the end
@@ -50,6 +53,9 @@ namespace VenusParticleEngine.Core
         /// </summary>
         public unsafe ParticleIterator Release(int releaseQuantity)
         {
+            if (releaseQuantity < 0)
+                throw new ArgumentOutOfRangeException(nameof(releaseQuantity));
+
             var numToRelease = Math.Min(releaseQuantity, Available);
 
             var prevCount = Count;
@@ -64,6 +70,9 @@ namespace VenusParticleEngine.Core
 
         public unsafe void Reclaim(int number)
         {
+            if (number < 0 || number > Count)
+                throw new ArgumentOutOfRangeException(nameof(number));
+
             Count -= number;
 
             Head += number;
@@ -71,23 +80,62 @@ namespace VenusParticleEngine.Core
                 Head -= (Size + 1);
         }
 
-        public void CopyTo(IntPtr destination)
+        public unsafe void CopyTo(IntPtr destination)
         {
-            memcpy(destination, _nativePointer, ActiveSizeInBytes);
-        }
+            if (Count == 0)
+                return;
 
-        public void CopyToReverse(IntPtr destination)
-        {
-            var offset = 0;
-            for (var i = ActiveSizeInBytes - Particle.SizeInBytes; i >= 0; i -= Particle.SizeInBytes)
+            var source = Head;
+            var destinationOffset = 0;
+            var remaining = Count;
+
+            while (remaining > 0)
             {
-                memcpy(IntPtr.Add(destination, offset), IntPtr.Add(_nativePointer, i), Particle.SizeInBytes);
-                offset += Particle.SizeInBytes;
+                var contiguousParticles = Math.Min(remaining, (int)(BufferEnd - source));
+                var bytesToCopy = contiguousParticles * Particle.SizeInBytes;
+
+                memcpy(IntPtr.Add(destination, destinationOffset), (IntPtr)source, bytesToCopy);
+
+                destinationOffset += bytesToCopy;
+                remaining -= contiguousParticles;
+                source += contiguousParticles;
+
+                if (source == BufferEnd)
+                    source = (Particle*)_nativePointer;
             }
         }
 
-        [DllImport("msvcrt.dll", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
-        public static extern void memcpy(IntPtr dest, IntPtr src, int count);
+        public unsafe void CopyToReverse(IntPtr destination)
+        {
+            if (Count == 0)
+                return;
+
+            var source = Head + Count - 1;
+            if (source >= BufferEnd)
+                source -= Size + 1;
+
+            var destinationOffset = 0;
+            for (var i = 0; i < Count; i++)
+            {
+                memcpy(IntPtr.Add(destination, destinationOffset), (IntPtr)source, Particle.SizeInBytes);
+                destinationOffset += Particle.SizeInBytes;
+
+                source--;
+                if (source < (Particle*)_nativePointer)
+                    source = BufferEnd - 1;
+            }
+        }
+
+        public static unsafe void memcpy(IntPtr dest, IntPtr src, int count)
+        {
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count));
+
+            if (count == 0)
+                return;
+
+            Buffer.MemoryCopy(src.ToPointer(), dest.ToPointer(), count, count);
+        }
 
         private bool _disposed;
 
@@ -98,7 +146,7 @@ namespace VenusParticleEngine.Core
                 Marshal.FreeHGlobal(_nativePointer);
                 _disposed = true;
 
-                GC.RemoveMemoryPressure(Particle.SizeInBytes * Size);
+                GC.RemoveMemoryPressure(SizeInBytes);
             }
 
             GC.SuppressFinalize(this);
@@ -139,6 +187,11 @@ namespace VenusParticleEngine.Core
                     _current -= _buffer.Size + 1;
 
                 return this;
+            }
+
+            internal unsafe ParticleIterator CreateIndependentIterator()
+            {
+                return new ParticleIterator(_buffer).Reset();
             }
 
             public unsafe Particle* Next()

@@ -105,6 +105,8 @@ _TeamCity*
 
 # DotCover is a Code Coverage Tool
 *.dotCover
+coverage.xml
+Tests/coverage/
 
 # NCrunch
 _NCrunch_*
@@ -228,3 +230,7 @@ _Pvt_Extensions
 
 # FAKE - F# Make
 .fake/
+
+# Cross-platform IDE and operating-system metadata
+.idea/
+.DS_Store

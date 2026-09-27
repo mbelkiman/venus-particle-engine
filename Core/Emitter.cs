@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Graphics;
+using System.IO;
 using VenusParticleEngine.Core.Modifiers;
 using VenusParticleEngine.Core.Profiles;
 using Newtonsoft.Json;
@@ -70,9 +71,6 @@ namespace VenusParticleEngine.Core
         }
 
         private float _term;
-        private int _lastQuantity = -1;
-        private int _countToChangeQuantity = 0;
-
         private float _totalSeconds;
         internal ParticleBuffer Buffer;
 
@@ -104,10 +102,9 @@ namespace VenusParticleEngine.Core
             get { return _texture; }
             set
             {
-                if (!string.IsNullOrEmpty(value.Name))
+                if (value != null && !string.IsNullOrEmpty(value.Name))
                 {
-                    var lastIndex = value.Name.LastIndexOf("\\") + 1;
-                    TexturePath = value.Name.Substring(lastIndex, value.Name.Length- lastIndex);
+                    TexturePath = Path.GetFileName(value.Name.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar));
                 }
                 _texture = value;
             }
@@ -156,7 +153,7 @@ namespace VenusParticleEngine.Core
                 return;
             }
 
-            if (_secondsSinceLastReclaim > (1f / ReclaimFrequency))
+            if (ReclaimFrequency > 0f && _secondsSinceLastReclaim > (1f / ReclaimFrequency))
             {
                 ReclaimExpiredParticles();
                 _secondsSinceLastReclaim -= (1f / ReclaimFrequency);
@@ -187,21 +184,6 @@ namespace VenusParticleEngine.Core
         public void Trigger(Vector position)
         {
             var numToRelease = FastRand.NextInteger(Parameters.Quantity);
-
-            if (_lastQuantity != Parameters.Quantity.Min)
-            {
-                if (_lastQuantity > 0)
-                    _countToChangeQuantity = 100;
-
-                _lastQuantity = Parameters.Quantity.Min;
-                numToRelease = 0;
-            }
-
-            if (_countToChangeQuantity > 0)
-            {
-                _countToChangeQuantity--;
-                numToRelease = 0;
-            }
 
             Release(position + Offset, numToRelease);
         }
